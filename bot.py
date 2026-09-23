@@ -1,6 +1,8 @@
 import os
 import re
 import unicodedata
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -11,7 +13,6 @@ from telegram.ext import (
     ContextTypes,
     filters,
 )
-
 
 # =========================================================
 # CONFIGURAÇÕES
@@ -27,6 +28,33 @@ if not TOKEN:
 
 
 # =========================================================
+# SERVIDOR WEB PARA O RENDER
+# =========================================================
+
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(b"Gold PodZ Bot online")
+
+    def log_message(self, format, *args):
+        return
+
+
+def iniciar_servidor_web():
+    porta = int(os.environ.get("PORT", "10000"))
+
+    servidor = HTTPServer(
+        ("0.0.0.0", porta),
+        HealthHandler
+    )
+
+    print(f"Servidor web iniciado na porta {porta}.")
+    servidor.serve_forever()
+
+
+# =========================================================
 # TEXTOS
 # =========================================================
 
@@ -35,7 +63,6 @@ SAUDACAO = """
 
 Como posso ajudá-lo?
 """
-
 
 PIX = """
 💠 PAGAMENTO VIA PIX
@@ -51,7 +78,6 @@ Copie a chave acima e cole no aplicativo do seu banco para realizar o pagamento.
 ✅ Após realizar o pagamento, por favor envie o comprovante aqui no chat para confirmarmos.
 """
 
-
 CARTAO_CREDITO = """
 💳 PAGAMENTO NO CRÉDITO
 
@@ -60,7 +86,6 @@ O pagamento será realizado na maquininha no momento da entrega.
 Após selecionar essa opção, é só aguardar o atendimento.
 """
 
-
 CARTAO_DEBITO = """
 💳 PAGAMENTO NO DÉBITO
 
@@ -68,7 +93,6 @@ O pagamento será realizado na maquininha no momento da entrega.
 
 Após selecionar essa opção, é só aguardar o atendimento.
 """
-
 
 DINHEIRO = """
 💵 PAGAMENTO EM DINHEIRO
@@ -91,7 +115,10 @@ def normalizar_texto(texto):
 
     texto = texto.lower().strip()
 
-    texto = unicodedata.normalize("NFD", texto)
+    texto = unicodedata.normalize(
+        "NFD",
+        texto
+    )
 
     texto = "".join(
         caractere
@@ -99,9 +126,17 @@ def normalizar_texto(texto):
         if unicodedata.category(caractere) != "Mn"
     )
 
-    texto = re.sub(r"[^\w\s]", "", texto)
+    texto = re.sub(
+        r"[^\w\s]",
+        "",
+        texto
+    )
 
-    texto = re.sub(r"\s+", " ", texto)
+    texto = re.sub(
+        r"\s+",
+        " ",
+        texto
+    )
 
     return texto
 
@@ -110,24 +145,23 @@ def normalizar_texto(texto):
 # MENU DE PAGAMENTO
 # =========================================================
 
-async def mostrar_pagamentos(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
+async def mostrar_pagamentos(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
     teclado = [
-
         [
             InlineKeyboardButton(
                 "💠 PIX",
                 callback_data="pix"
             )
         ],
-
         [
             InlineKeyboardButton(
                 "💳 CARTÃO",
                 callback_data="cartao"
             )
         ],
-
         [
             InlineKeyboardButton(
                 "💵 DINHEIRO",
@@ -144,14 +178,12 @@ async def mostrar_pagamentos(update: Update, context: ContextTypes.DEFAULT_TYPE)
     )
 
     if update.message:
-
         await update.message.reply_text(
             mensagem,
             reply_markup=markup
         )
 
     elif update.callback_query:
-
         await update.callback_query.message.reply_text(
             mensagem,
             reply_markup=markup
@@ -162,66 +194,69 @@ async def mostrar_pagamentos(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # /START
 # =========================================================
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    await update.message.reply_text(SAUDACAO)
+async def start(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    await update.message.reply_text(
+        SAUDACAO
+    )
 
 
 # =========================================================
 # BOTÕES
 # =========================================================
 
-async def botoes(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
+async def botoes(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
     query = update.callback_query
 
     await query.answer()
-
 
     # ---------------- PIX ----------------
 
     if query.data == "pix":
 
-        await query.message.reply_text(PIX)
-
+        await query.message.reply_text(
+            PIX
+        )
 
     # ---------------- CARTÃO ----------------
 
     elif query.data == "cartao":
 
         teclado = [
-
             [
                 InlineKeyboardButton(
                     "💳 CRÉDITO",
                     callback_data="credito"
                 )
             ],
-
             [
                 InlineKeyboardButton(
                     "💳 DÉBITO",
                     callback_data="debito"
                 )
             ],
-
             [
                 InlineKeyboardButton(
                     "⬅️ VOLTAR",
                     callback_data="voltar_pagamento"
                 )
             ]
-
         ]
 
-        markup = InlineKeyboardMarkup(teclado)
+        markup = InlineKeyboardMarkup(
+            teclado
+        )
 
         await query.message.reply_text(
             "💳 PAGAMENTO NO CARTÃO\n\n"
             "Qual modalidade deseja utilizar?",
             reply_markup=markup
         )
-
 
     # ---------------- CRÉDITO ----------------
 
@@ -231,7 +266,6 @@ async def botoes(update: Update, context: ContextTypes.DEFAULT_TYPE):
             CARTAO_CREDITO
         )
 
-
     # ---------------- DÉBITO ----------------
 
     elif query.data == "debito":
@@ -240,7 +274,6 @@ async def botoes(update: Update, context: ContextTypes.DEFAULT_TYPE):
             CARTAO_DEBITO
         )
 
-
     # ---------------- DINHEIRO ----------------
 
     elif query.data == "dinheiro":
@@ -248,7 +281,6 @@ async def botoes(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text(
             DINHEIRO
         )
-
 
     # ---------------- VOLTAR ----------------
 
@@ -264,39 +296,28 @@ async def botoes(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # GATILHOS POR TEXTO
 # =========================================================
 
-async def mensagens(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
+async def mensagens(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
     texto = normalizar_texto(
         update.message.text
     )
 
-
     gatilhos_pagamento = [
-
         "forma de pagamento",
-
         "formas de pagamento",
-
         "qual a forma de pagamento",
-
         "qual forma de pagamento",
-
         "como posso pagar",
-
         "como eu posso pagar",
-
         "pagamento",
     ]
-
-
-    # Verifica se a mensagem corresponde
-    # a algum dos gatilhos
 
     if any(
         gatilho in texto
         for gatilho in gatilhos_pagamento
     ):
-
         await mostrar_pagamentos(
             update,
             context
@@ -309,8 +330,16 @@ async def mensagens(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
 
-    app = Application.builder().token(TOKEN).build()
+    # Inicia a porta web exigida pelo Render
+    servidor_thread = threading.Thread(
+        target=iniciar_servidor_web,
+        daemon=True
+    )
 
+    servidor_thread.start()
+
+    # Inicia o bot do Telegram
+    app = Application.builder().token(TOKEN).build()
 
     # /start
 
@@ -321,7 +350,6 @@ def main():
         )
     )
 
-
     # /pagamento
 
     app.add_handler(
@@ -330,7 +358,6 @@ def main():
             mostrar_pagamentos
         )
     )
-
 
     # /formadepagamento
 
@@ -341,7 +368,6 @@ def main():
         )
     )
 
-
     # Botões
 
     app.add_handler(
@@ -349,7 +375,6 @@ def main():
             botoes
         )
     )
-
 
     # Mensagens normais
 
@@ -359,7 +384,6 @@ def main():
             mensagens
         )
     )
-
 
     print("Gold PodZ Bot iniciado.")
 
