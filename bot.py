@@ -2,7 +2,7 @@ import os
 import re
 import threading
 import unicodedata
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -28,14 +28,13 @@ if not TOKEN:
 
 
 # =========================================================
-# SERVIDOR WEB PARA O RENDER
+# SERVIDOR PARA O RENDER
 # =========================================================
 
 class HealthHandler(BaseHTTPRequestHandler):
-
     def do_GET(self):
         self.send_response(200)
-        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
         self.wfile.write(b"Gold PodZ Bot online")
 
@@ -43,15 +42,14 @@ class HealthHandler(BaseHTTPRequestHandler):
         return
 
 
-def iniciar_servidor_web():
+def iniciar_servidor():
     porta = int(os.environ.get("PORT", 10000))
 
-    servidor = ThreadingHTTPServer(
+    servidor = HTTPServer(
         ("0.0.0.0", porta),
         HealthHandler
     )
 
-    print(f"Servidor web iniciado na porta {porta}.")
     servidor.serve_forever()
 
 
@@ -115,7 +113,11 @@ def normalizar_texto(texto):
     """
 
     texto = texto.lower().strip()
-    texto = unicodedata.normalize("NFD", texto)
+
+    texto = unicodedata.normalize(
+        "NFD",
+        texto
+    )
 
     texto = "".join(
         caractere
@@ -123,10 +125,86 @@ def normalizar_texto(texto):
         if unicodedata.category(caractere) != "Mn"
     )
 
-    texto = re.sub(r"[^\w\s]", "", texto)
-    texto = re.sub(r"\s+", " ", texto)
+    texto = re.sub(
+        r"[^\w\s]",
+        "",
+        texto
+    )
+
+    texto = re.sub(
+        r"\s+",
+        " ",
+        texto
+    )
 
     return texto
+
+
+async def mensagem_da_propria_loja(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    """
+    No Telegram Business o bot pode receber atualizações
+    de mensagens enviadas pela própria conta da loja.
+
+    Essa função identifica essas mensagens para impedir
+    que o bot responda a si mesmo.
+    """
+
+    mensagem = update.effective_message
+
+    if not mensagem:
+        return False
+
+    business_id = mensagem.business_connection_id
+
+    if not business_id:
+        return False
+
+    try:
+        conexao = await context.bot.get_business_connection(
+            business_id
+        )
+
+        if (
+            mensagem.from_user
+            and conexao.user
+            and mensagem.from_user.id == conexao.user.id
+        ):
+            return True
+
+    except Exception as erro:
+        print(
+            "Não foi possível verificar o remetente Business:",
+            erro
+        )
+
+    return False
+
+
+async def enviar_mensagem(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    texto,
+    reply_markup=None
+):
+    """
+    Envia a mensagem preservando automaticamente
+    a conexão do Telegram Business.
+    """
+
+    mensagem = update.effective_message
+
+    if not mensagem:
+        return
+
+    await context.bot.send_message(
+        chat_id=mensagem.chat_id,
+        text=texto,
+        reply_markup=reply_markup,
+        business_connection_id=mensagem.business_connection_id
+    )
 
 
 # =========================================================
@@ -166,13 +244,12 @@ async def mostrar_pagamentos(
         "Como deseja realizar o pagamento?"
     )
 
-    # Funciona tanto para mensagem normal
-    # quanto para Telegram Business
-    if update.effective_message:
-        await update.effective_message.reply_text(
-            mensagem,
-            reply_markup=markup
-        )
+    await enviar_mensagem(
+        update,
+        context,
+        mensagem,
+        reply_markup=markup
+    )
 
 
 # =========================================================
@@ -184,8 +261,17 @@ async def start(
     context: ContextTypes.DEFAULT_TYPE
 ):
 
-    if update.effective_message:
-        await update.effective_message.reply_text(SAUDACAO)
+    if await mensagem_da_propria_loja(
+        update,
+        context
+    ):
+        return
+
+    await enviar_mensagem(
+        update,
+        context,
+        SAUDACAO
+    )
 
 
 # =========================================================
@@ -208,7 +294,11 @@ async def botoes(
 
     if query.data == "pix":
 
-        await query.message.reply_text(PIX)
+        await enviar_mensagem(
+            update,
+            context,
+            PIX
+        )
 
     # ---------------- CARTÃO ----------------
 
@@ -237,9 +327,13 @@ async def botoes(
 
         markup = InlineKeyboardMarkup(teclado)
 
-        await query.message.reply_text(
-            "💳 PAGAMENTO NO CARTÃO\n\n"
-            "Qual modalidade deseja utilizar?",
+        await enviar_mensagem(
+            update,
+            context,
+            (
+                "💳 PAGAMENTO NO CARTÃO\n\n"
+                "Qual modalidade deseja utilizar?"
+            ),
             reply_markup=markup
         )
 
@@ -247,7 +341,9 @@ async def botoes(
 
     elif query.data == "credito":
 
-        await query.message.reply_text(
+        await enviar_mensagem(
+            update,
+            context,
             CARTAO_CREDITO
         )
 
@@ -255,7 +351,9 @@ async def botoes(
 
     elif query.data == "debito":
 
-        await query.message.reply_text(
+        await enviar_mensagem(
+            update,
+            context,
             CARTAO_DEBITO
         )
 
@@ -263,7 +361,9 @@ async def botoes(
 
     elif query.data == "dinheiro":
 
-        await query.message.reply_text(
+        await enviar_mensagem(
+            update,
+            context,
             DINHEIRO
         )
 
@@ -278,8 +378,7 @@ async def botoes(
 
 
 # =========================================================
-# MENSAGENS DOS CLIENTES
-# NORMAL + TELEGRAM BUSINESS
+# GATILHOS POR TEXTO
 # =========================================================
 
 async def mensagens(
@@ -292,30 +391,43 @@ async def mensagens(
     if not mensagem or not mensagem.text:
         return
 
-    texto = normalizar_texto(mensagem.text)
+    # Evita o bot responder às mensagens enviadas
+    # pela própria conta Business da loja.
 
-    # -----------------------------------------------------
-    # SAUDAÇÃO AUTOMÁTICA
-    # -----------------------------------------------------
-    #
-    # Guarda quais clientes já receberam a saudação
-    # enquanto o bot estiver rodando.
-    #
+    if await mensagem_da_propria_loja(
+        update,
+        context
+    ):
+        return
 
-    chat_id = mensagem.chat_id
-
-    clientes_saudados = context.application.bot_data.setdefault(
-        "clientes_saudados",
-        set()
+    texto = normalizar_texto(
+        mensagem.text
     )
 
-    primeira_mensagem = chat_id not in clientes_saudados
+    # -----------------------------------------------------
+    # SAUDAÇÕES
+    # -----------------------------------------------------
 
-    if primeira_mensagem:
-        clientes_saudados.add(chat_id)
+    gatilhos_saudacao = [
+        "oi",
+        "ola",
+        "bom dia",
+        "boa tarde",
+        "boa noite",
+    ]
+
+    if texto in gatilhos_saudacao:
+
+        await enviar_mensagem(
+            update,
+            context,
+            SAUDACAO
+        )
+
+        return
 
     # -----------------------------------------------------
-    # GATILHOS DE PAGAMENTO
+    # FORMAS DE PAGAMENTO
     # -----------------------------------------------------
 
     gatilhos_pagamento = [
@@ -325,23 +437,13 @@ async def mensagens(
         "qual forma de pagamento",
         "como posso pagar",
         "como eu posso pagar",
-        "como pagar",
         "pagamento",
-        "pagar",
     ]
 
-    pediu_pagamento = any(
+    if any(
         gatilho in texto
         for gatilho in gatilhos_pagamento
-    )
-
-    # Se pediu pagamento, mostra o menu.
-    # Se for a primeira mensagem, manda a saudação antes.
-
-    if pediu_pagamento:
-
-        if primeira_mensagem:
-            await mensagem.reply_text(SAUDACAO)
+    ):
 
         await mostrar_pagamentos(
             update,
@@ -350,32 +452,20 @@ async def mensagens(
 
         return
 
-    # Primeira mensagem normal do cliente
-    if primeira_mensagem:
-        await mensagem.reply_text(SAUDACAO)
-
 
 # =========================================================
-# CONEXÃO TELEGRAM BUSINESS
+# TRATAMENTO DE ERROS
 # =========================================================
 
-async def conexao_business(
-    update: Update,
+async def erro_handler(
+    update: object,
     context: ContextTypes.DEFAULT_TYPE
 ):
 
-    conexao = update.business_connection
-
-    if not conexao:
-        return
-
-    if conexao.is_enabled:
-        print(
-            "Telegram Business conectado. "
-            f"ID da conexão: {conexao.id}"
-        )
-    else:
-        print("Telegram Business desconectado.")
+    print(
+        "ERRO NO BOT:",
+        repr(context.error)
+    )
 
 
 # =========================================================
@@ -384,24 +474,26 @@ async def conexao_business(
 
 def main():
 
-    # ---------------------------------------------
-    # Servidor web exigido pelo Render
-    # ---------------------------------------------
+    # Servidor HTTP necessário para o Render
 
-    servidor = threading.Thread(
-        target=iniciar_servidor_web,
+    servidor_thread = threading.Thread(
+        target=iniciar_servidor,
         daemon=True
     )
 
-    servidor.start()
+    servidor_thread.start()
 
-    # ---------------------------------------------
     # Telegram
-    # ---------------------------------------------
 
-    app = Application.builder().token(TOKEN).build()
+    app = (
+        Application
+        .builder()
+        .token(TOKEN)
+        .build()
+    )
 
     # /start
+
     app.add_handler(
         CommandHandler(
             "start",
@@ -410,6 +502,7 @@ def main():
     )
 
     # /pagamento
+
     app.add_handler(
         CommandHandler(
             "pagamento",
@@ -418,6 +511,7 @@ def main():
     )
 
     # /formadepagamento
+
     app.add_handler(
         CommandHandler(
             "formadepagamento",
@@ -426,33 +520,35 @@ def main():
     )
 
     # Botões
+
     app.add_handler(
         CallbackQueryHandler(
             botoes
         )
     )
 
-    # Mensagens normais e Business
+    # Mensagens normais + mensagens Telegram Business
+
     app.add_handler(
         MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
+            (
+                filters.TEXT
+                & ~filters.COMMAND
+            ),
             mensagens
         )
     )
 
-    # Registra alterações na conexão Business
-    from telegram.ext import BusinessConnectionHandler
+    # Erros
 
-    app.add_handler(
-        BusinessConnectionHandler(
-            conexao_business
-        )
+    app.add_error_handler(
+        erro_handler
     )
 
-    print("Gold PodZ Bot iniciado com Telegram Business.")
+    print(
+        "Gold PodZ Bot iniciado com suporte ao Telegram Business."
+    )
 
-    # Muito importante:
-    # recebe também BUSINESS_MESSAGE e BUSINESS_CONNECTION
     app.run_polling(
         allowed_updates=Update.ALL_TYPES
     )
