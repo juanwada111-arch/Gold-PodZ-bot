@@ -75,9 +75,10 @@ CM APOIO ADMINISTRATIVO
 """
 
 
-PIX_CHAVE = """
-62.114.975/0001-06
+PIX_CHAVE = "62.114.975/0001-06"
 
+
+PIX_COMPROVANTE = """
 ✅ Após realizar o pagamento, por favor envie o comprovante aqui no chat para confirmarmos.
 """
 
@@ -304,6 +305,12 @@ async def botoes(
             update,
             context,
             PIX_CHAVE
+        )
+
+        await enviar_mensagem(
+            update,
+            context,
+            PIX_COMPROVANTE
         )
 
     # ---------------- CARTÃO ----------------
