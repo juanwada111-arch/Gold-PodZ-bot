@@ -82,15 +82,6 @@ PIX_CHAVE = """
 """
 
 
-PIX_MAQUININHA = """
-📲 PIX NA MAQUININHA
-
-O pagamento via Pix na maquininha possui taxa adicional.
-
-Iremos conferir o valor final com a taxa da maquininha, só um instante!
-"""
-
-
 CARTAO_CREDITO = """
 💳 PAGAMENTO NO CRÉDITO
 
@@ -101,7 +92,7 @@ Iremos conferir o valor do crédito com a taxa da máquina, só um instante!
 CARTAO_DEBITO = """
 💳 PAGAMENTO NO DÉBITO
 
-Não tem pix ? Débito fica R$3 a mais no valor total do pedido!
+Não tem pix ? Débito fica R$ 3 a mais no valor total do pedido!
 """
 
 
@@ -157,11 +148,8 @@ async def mensagem_da_propria_loja(
     context: ContextTypes.DEFAULT_TYPE
 ):
     """
-    No Telegram Business o bot pode receber atualizações
-    de mensagens enviadas pela própria conta da loja.
-
-    Essa função identifica essas mensagens para impedir
-    que o bot responda a si mesmo.
+    Identifica mensagens enviadas pela própria
+    conta Business da loja.
     """
 
     mensagem = update.effective_message
@@ -233,12 +221,6 @@ async def mostrar_pagamentos(
             InlineKeyboardButton(
                 "💠 PIX",
                 callback_data="pix"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "📲 PIX NA MAQUININHA",
-                callback_data="pix_maquininha"
             )
         ],
         [
@@ -322,16 +304,6 @@ async def botoes(
             update,
             context,
             PIX_CHAVE
-        )
-
-    # ---------------- PIX NA MAQUININHA ----------------
-
-    elif query.data == "pix_maquininha":
-
-        await enviar_mensagem(
-            update,
-            context,
-            PIX_MAQUININHA
         )
 
     # ---------------- CARTÃO ----------------
@@ -425,21 +397,45 @@ async def mensagens(
     if not mensagem or not mensagem.text:
         return
 
-    # Evita o bot responder às mensagens enviadas
-    # pela própria conta Business da loja.
-
-    if await mensagem_da_propria_loja(
-        update,
-        context
-    ):
-        return
-
     texto = normalizar_texto(
         mensagem.text
     )
 
     # -----------------------------------------------------
-    # SAUDAÇÕES
+    # FORMAS DE PAGAMENTO
+    # -----------------------------------------------------
+
+    gatilhos_pagamento = [
+        "forma de pagamento",
+        "formas de pagamento",
+        "qual a forma de pagamento",
+        "qual forma de pagamento",
+        "como posso pagar",
+        "como eu posso pagar",
+        "pagamento",
+    ]
+
+    # A própria loja pode acionar somente o menu de pagamento.
+    # Outras mensagens da loja, como "olá" e "boa tarde",
+    # não recebem resposta automática.
+
+    if await mensagem_da_propria_loja(
+        update,
+        context
+    ):
+        if any(
+            gatilho in texto
+            for gatilho in gatilhos_pagamento
+        ):
+            await mostrar_pagamentos(
+                update,
+                context
+            )
+
+        return
+
+    # -----------------------------------------------------
+    # SAUDAÇÕES DO CLIENTE
     # -----------------------------------------------------
 
     gatilhos_saudacao = [
@@ -461,18 +457,8 @@ async def mensagens(
         return
 
     # -----------------------------------------------------
-    # FORMAS DE PAGAMENTO
+    # FORMAS DE PAGAMENTO DO CLIENTE
     # -----------------------------------------------------
-
-    gatilhos_pagamento = [
-        "forma de pagamento",
-        "formas de pagamento",
-        "qual a forma de pagamento",
-        "qual forma de pagamento",
-        "como posso pagar",
-        "como eu posso pagar",
-        "pagamento",
-    ]
 
     if any(
         gatilho in texto
