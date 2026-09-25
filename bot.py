@@ -14,6 +14,7 @@ from telegram.ext import (
     filters,
 )
 
+
 # =========================================================
 # CONFIGURAÇÕES
 # =========================================================
@@ -63,35 +64,46 @@ SAUDACAO = """
 Como posso ajudá-lo?
 """
 
+
 PIX = """
 💠 PAGAMENTO VIA PIX
 
 Recebedor:
 CM APOIO ADMINISTRATIVO
 
-Chave PIX (CNPJ):
-62.114.975/0001-06
+👇 Copie a chave PIX abaixo:
+"""
 
-Copie a chave acima e cole no aplicativo do seu banco para realizar o pagamento.
+
+PIX_CHAVE = """
+62.114.975/0001-06
 
 ✅ Após realizar o pagamento, por favor envie o comprovante aqui no chat para confirmarmos.
 """
 
+
+PIX_MAQUININHA = """
+📲 PIX NA MAQUININHA
+
+O pagamento via Pix na maquininha possui taxa adicional.
+
+Iremos conferir o valor final com a taxa da maquininha, só um instante!
+"""
+
+
 CARTAO_CREDITO = """
 💳 PAGAMENTO NO CRÉDITO
 
-O pagamento será realizado na maquininha no momento da entrega.
-
-Após selecionar essa opção, é só aguardar o atendimento.
+Iremos conferir o valor do crédito com a taxa da máquina, só um instante!
 """
+
 
 CARTAO_DEBITO = """
 💳 PAGAMENTO NO DÉBITO
 
-O pagamento será realizado na maquininha no momento da entrega.
-
-Após selecionar essa opção, é só aguardar o atendimento.
+Não tem pix ? Débito fica R$3 a mais no valor total do pedido!
 """
+
 
 DINHEIRO = """
 💵 PAGAMENTO EM DINHEIRO
@@ -225,6 +237,12 @@ async def mostrar_pagamentos(
         ],
         [
             InlineKeyboardButton(
+                "📲 PIX NA MAQUININHA",
+                callback_data="pix_maquininha"
+            )
+        ],
+        [
+            InlineKeyboardButton(
                 "💳 CARTÃO",
                 callback_data="cartao"
             )
@@ -298,6 +316,22 @@ async def botoes(
             update,
             context,
             PIX
+        )
+
+        await enviar_mensagem(
+            update,
+            context,
+            PIX_CHAVE
+        )
+
+    # ---------------- PIX NA MAQUININHA ----------------
+
+    elif query.data == "pix_maquininha":
+
+        await enviar_mensagem(
+            update,
+            context,
+            PIX_MAQUININHA
         )
 
     # ---------------- CARTÃO ----------------
